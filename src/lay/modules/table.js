@@ -73,7 +73,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
   }
   
   //解析自定义模板数据
-  ,parseTempData = function(item3, content, tplData, text){
+  ,parseTempData = function(item3, content, tplData, text){ //表头数据、原始内容、表体数据、是否只返回文本
     var str = item3.templet ? function(){
       return typeof item3.templet === 'function' 
         ? item3.templet(tplData)
@@ -158,7 +158,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     ,'<div class="layui-table-box">'
       ,'{{# if(d.data.loading){ }}'
       ,'<div class="layui-table-init" style="background-color: #fff;">'
-        ,'<i class="layui-icon layui-icon-loading layui-icon"></i>'
+        ,'<i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i>'
       ,'</div>'
       ,'{{# } }}'
       
@@ -459,7 +459,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     
     if(typeof options.defaultToolbar === 'object'){
       layui.each(options.defaultToolbar, function(i, item){
-        var thisItem = layout[item];
+        var thisItem = typeof item === 'string' ? layout[item] : item;
         if(thisItem){
           iconElem.push('<div class="layui-inline" title="'+ thisItem.title +'" lay-event="'+ thisItem.layEvent +'">'
             +'<i class="layui-icon '+ thisItem.icon +'"></i>'
@@ -634,13 +634,14 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     that.fullSize(); //让表格铺满
     that.setColsWidth(); //自适应列宽
     that.scrollPatch(); //滚动条补丁
-    
-    that.layNone && that.layNone.width(that.elem.width() - 2);
   };
   
   //表格重载
   Class.prototype.reload = function(options){
     var that = this;
+    
+    options = options || {};
+    delete that.haveInit;
     
     if(options.data && options.data.constructor === Array) delete that.config.data;
     that.config = $.extend(true, {}, that.config, options);
@@ -652,19 +653,17 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
   Class.prototype.errorView = function(html){
     var that = this
     ,elemNone = that.layMain.find('.'+ NONE)
-    ,layNone = $(['<tr class="'+ NONE +'" data-off="1">'
-      ,'<td data-off="1"><div class="layui-table-none">'+ html +'</div></td>'
-    ,'</tr>'].join(''));
+    ,layNone = $('<div class="'+ NONE +'">'+ (html || 'Error') +'</div>');
     
     if(elemNone[0]){
       that.layNone.remove();
       elemNone.remove();
     }
     
-    if(!html) return;
+    that.layFixed.addClass(HIDE);
+    that.layMain.find('tbody').html('');
     
-    layNone.width(that.elem.width() - 2);
-    that.layMain.find('tbody').html(that.layNone = layNone);
+    that.layMain.append(that.layNone = layNone);
     
     table.cache[that.key] = []; //格式化缓存数据
   };
@@ -739,7 +738,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
       res[response.dataName] = options.data.concat().splice(startLimit, options.limit);
       res[response.countName] = options.data.length;
 
-      that.renderData(res, curr, (options.page && options.page.count) ? options.page.count : options.data.length), sort();
+      that.renderData(res, curr, res[response.countName]), sort();
       that.setColsWidth();
       typeof options.done === 'function' && options.done(res, curr, res[response.countName]);
     }
@@ -772,6 +771,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
         ,numbers = i1 + options.limit*(curr - 1) + 1; //序号
         
         if(item1.length === 0) return;
+        
         if(!sort){
           item1[table.config.indexName] = i1;
         }
@@ -853,6 +853,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
       });
 
       that.layBody.scrollTop(0);
+      that.layMain.find('.'+ NONE).remove();
       that.layMain.find('tbody').html(trs.join(''));
       that.layFixLeft.find('tbody').html(trs_fixed.join(''));
       that.layFixRight.find('tbody').html(trs_fixed_r.join(''));
@@ -887,6 +888,8 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     if(data.length === 0){
       that.renderForm();
       return that.errorView(options.text.none);
+    } else {
+      that.layFixed.removeClass(HIDE);
     }
     
     render(); //渲染数据
@@ -940,12 +943,24 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
       });
     });
     
+    that.dataTotal = {};
+    
     var tds = [];
     that.eachCols(function(i3, item3){
       var field = item3.field || i3;
       
       //td内容
-      var td = ['<td data-field="'+ field +'" data-key="'+ options.index + '-'+ item3.key +'" '+ function(){
+      var content = function(){
+        var text = item3.totalRowText || ''
+        ,thisTotalNum = parseFloat(totalNums[field]).toFixed(2)
+        ,tplData = {};
+        
+        tplData[field] = thisTotalNum;
+        thisTotalNum = parseTempData(item3, thisTotalNum, tplData);
+        
+        return item3.totalRow ? (thisTotalNum || text) : text;
+      }()
+      ,td = ['<td data-field="'+ field +'" data-key="'+ options.index + '-'+ item3.key +'" '+ function(){
         var attr = [];
         if(item3.align) attr.push('align="'+ item3.align +'"'); //对齐方式
         if(item3.style) attr.push('style="'+ item3.style +'"'); //自定义样式
@@ -961,15 +976,13 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
           var str = (options.index + '-' + item3.key);
           return item3.type === 'normal' ? str 
           : (str + ' laytable-cell-' + item3.type);
-        }() +'">' + function(){
-          var text = item3.totalRowText || '';
-          return item3.totalRow ? (parseFloat(totalNums[field]).toFixed(2) || text) : text;
-        }()
+        }() +'">' + content
       ,'</div></td>'].join('');
       
+      item3.field && (that.dataTotal[field] = content);
       tds.push(td);
     });
-    
+
     that.layTotal.find('tbody').html('<tr>' + tds.join('') + '</tr>');
   };
   
@@ -1076,7 +1089,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
         that.layBox.find(ELEM_INIT).remove();
       } else {
         that.layInit = $(['<div class="layui-table-init">'
-          ,'<i class="layui-icon layui-icon-loading layui-icon"></i>'
+          ,'<i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i>'
         ,'</div>'].join(''));
         that.layBox.append(that.layInit);
       }
@@ -1222,7 +1235,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     var mainHeight = that.layMain.height()
     ,fixHeight = mainHeight - scollHeight;
     that.layFixed.find(ELEM_BODY).css('height', layMainTable.height() >= fixHeight ? fixHeight : 'auto');
-    
+
     //表格宽度小于容器宽度时，隐藏固定列
     that.layFixRight[outWidth > 0 ? 'removeClass' : 'addClass'](HIDE); 
     
@@ -1330,7 +1343,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
               ,done: function(panel, list){
                 list.on('click', function(){
                   var type = $(this).data('type')
-                  table.exportFile(options.id, null, type);
+                  table.exportFile.call(that, options.id, null, type);
                 });
               }
             });
@@ -1478,13 +1491,9 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
                   templet = item2.templet;
                 }
               });
-              td.children(ELEM_CELL).html(function(){
-                return templet ? function(){
-                  return typeof templet === 'function' 
-                    ? templet(data)
-                  : laytpl($(templet).html() || value).render(data)
-                }() : value;
-              }());
+              td.children(ELEM_CELL).html(parseTempData({
+                templet: templet
+              }, value, data));
               td.data('content', value);
             }
           });
@@ -1595,11 +1604,9 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
         }
       });
       othis.siblings(ELEM_CELL).html(function(value){
-        return templet ? function(){
-          return typeof templet === 'function' 
-            ? templet(data)
-          : laytpl($(templet).html() || thisElem.value).render(data)
-        }() : value;
+        return parseTempData({
+          templet: templet
+        }, value, data);
       }(thisElem.value));
       othis.parent().data('content', thisElem.value);
       othis.remove();
@@ -1703,7 +1710,15 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
       
       layer.close(that.tipsIndex);
     });
-    
+
+    //自适应
+    _WIN.on('resize', function(){
+      that.resize();
+    });
+  };
+  
+  //一次性事件
+  ;(function(){
     //全局点击
     _DOC.on('click', function(){
       _DOC.trigger('table.remove.tool.panel');
@@ -1713,12 +1728,7 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     _DOC.on('table.remove.tool.panel', function(){
       $('.layui-table-tool-panel').remove();
     });
-    
-    //自适应
-    _WIN.on('resize', function(){
-      that.resize();
-    });
-  };
+  })();
   
   //初始化
   table.init = function(filter, settings){
@@ -1868,6 +1878,8 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
   
   //表格导出
   table.exportFile = function(id, data, type){
+    var that = this;
+    
     data = data || table.clearCacheKey(table.cache[id]);
     type = type || 'csv';
     
@@ -1881,10 +1893,12 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
     if(device.ie) return hint.error('IE_NOT_SUPPORT_EXPORTS');
     
     alink.href = 'data:'+ textType +';charset=utf-8,\ufeff'+ encodeURIComponent(function(){
-      var dataTitle = [], dataMain = [];
+      var dataTitle = [], dataMain = [], dataTotal = [];
+      
+      //表头和表体
       layui.each(data, function(i1, item1){
         var vals = [];
-        if(typeof id === 'object'){ //ID直接为表头数据
+        if(typeof id === 'object'){ //如果 id 参数直接为表头数据
           layui.each(id, function(i, item){
             i1 == 0 && dataTitle.push(item || '');
           });
@@ -1894,15 +1908,23 @@ layui.define(['laytpl', 'laypage', 'layer', 'form', 'util'], function(exports){
         } else {
           table.eachCols(id, function(i3, item3){
             if(item3.field && item3.type == 'normal' && !item3.hide){
+              var content = item1[item3.field];
+              if(content === undefined || content === null) content = '';
+              
               i1 == 0 && dataTitle.push(item3.title || '');
-              vals.push('"'+ parseTempData(item3, item1[item3.field], item1, 'text') + '"');
+              vals.push('"'+ parseTempData(item3, content, item1, 'text') + '"');
             }
           });
         }
-        dataMain.push(vals.join(','))
+        dataMain.push(vals.join(','));
       });
       
-      return dataTitle.join(',') + '\r\n' + dataMain.join('\r\n');
+      //表合计
+      layui.each(that.dataTotal, function(key, value){
+        dataTotal.push(value);
+      });
+      
+      return dataTitle.join(',') + '\r\n' + dataMain.join('\r\n') + '\r\n' + dataTotal.join(',');
     }());
     
     alink.download = (config.title || 'table_'+ (config.index || '')) + '.' + type; 

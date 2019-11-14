@@ -213,18 +213,32 @@ layui.define('layer' , function(exports){
           ,processData: false
           ,dataType: 'json'
           ,headers: options.headers || {}
+          //成功回调
           ,success: function(res){
             successful++;
             done(index, res);
             allDone();
           }
+          //异常回调
           ,error: function(){
             aborted++;
             that.msg('请求上传接口出现异常');
             error(index);
             allDone();
           }
+          ,xhr: function(){
+            var xhr = new XMLHttpRequest();
+            //监听上传进度
+            xhr.upload.addEventListener("progress", function (e) {
+              if(e.lengthComputable) {
+                var percent = Math.floor((e.loaded/e.total)* 100); //百分比
+                typeof options.progress === 'function' && options.progress(percent, e);
+              }
+            });
+            return xhr;
+          }
         });
+        
       });
     }
     
@@ -409,6 +423,10 @@ layui.define('layer' , function(exports){
   
   //重置方法
   Class.prototype.reload = function(options){
+    options = options || {};
+    delete options.elem;
+    delete options.bindAction;
+    
     var that = this
     ,options = that.config = $.extend({}, that.config, upload.config, options)
     ,next = options.elem.next();
